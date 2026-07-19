@@ -1,0 +1,14 @@
+[
+  {
+    "card_id": "card-orbit",
+    "front": "Why do low-Earth satellites stay in orbit?",
+    "back": "They continually fall toward Earth while moving sideways fast enough to keep missing it.",
+    "tags": ["physics", "synthetic-demo"]
+  },
+  {
+    "card_id": "card-index",
+    "front": "What does a database index trade?",
+    "back": "It uses extra storage and write work to make selected reads faster.",
+    "tags": ["databases", "synthetic-demo"]
+  }
+]
