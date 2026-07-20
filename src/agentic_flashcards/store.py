@@ -29,8 +29,8 @@ class FlashcardStore:
             );
             CREATE TABLE IF NOT EXISTS review_events(
               operation_id TEXT PRIMARY KEY, card_id TEXT NOT NULL REFERENCES cards(id),
-              reviewed_on TEXT NOT NULL, rating INTEGER NOT NULL, result_json TEXT NOT NULL,
-              created_at TEXT NOT NULL
+              reviewed_on TEXT NOT NULL, rating INTEGER NOT NULL,
+              review_duration_ms INTEGER, result_json TEXT NOT NULL, created_at TEXT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS content_operations(
               operation_id TEXT PRIMARY KEY, result_json TEXT NOT NULL, created_at TEXT NOT NULL
@@ -41,6 +41,11 @@ class FlashcardStore:
             );
             """
         )
+        review_columns = {
+            row["name"] for row in self.conn.execute("PRAGMA table_info(review_events)")
+        }
+        if "review_duration_ms" not in review_columns:
+            self.conn.execute("ALTER TABLE review_events ADD COLUMN review_duration_ms INTEGER")
         self.conn.commit()
 
     @staticmethod
@@ -122,12 +127,24 @@ class FlashcardStore:
             self.conn.rollback()
             raise
 
-    def review(self, *, operation_id: str, card_id: str, reviewed_on: str, rating: int) -> dict:
+    def review(
+        self,
+        *,
+        operation_id: str,
+        card_id: str,
+        reviewed_on: str,
+        rating: int,
+        duration_ms: int | None = None,
+    ) -> dict:
         prior = self.conn.execute(
             "SELECT result_json FROM review_events WHERE operation_id=?", (operation_id,)
         ).fetchone()
         if prior:
             return json.loads(prior["result_json"])
+        if duration_ms is not None and (
+            not isinstance(duration_ms, int) or isinstance(duration_ms, bool) or duration_ms <= 0
+        ):
+            raise ValueError("duration_ms must be a positive integer")
         current = self.get(card_id)
         if current is None:
             raise ValueError("unknown card")
@@ -145,6 +162,7 @@ class FlashcardStore:
             "interval_days": schedule.interval_days,
             "ease": schedule.ease,
             "repetitions": schedule.repetitions,
+            "review_duration_ms": duration_ms,
         }
         self.conn.execute("BEGIN IMMEDIATE")
         try:
@@ -163,12 +181,15 @@ class FlashcardStore:
             updated = self.get(card_id)
             result["version"] = updated["version"]
             self.conn.execute(
-                "INSERT INTO review_events VALUES (?,?,?,?,?,?)",
+                """INSERT INTO review_events
+                   (operation_id,card_id,reviewed_on,rating,review_duration_ms,result_json,created_at)
+                   VALUES (?,?,?,?,?,?,?)""",
                 (
                     operation_id,
                     card_id,
                     reviewed_on,
                     rating,
+                    duration_ms,
                     json.dumps(result, sort_keys=True),
                     now,
                 ),

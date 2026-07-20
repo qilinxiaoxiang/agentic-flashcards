@@ -1,3 +1,5 @@
+import pytest
+
 from agentic_flashcards import CardConflict, FlashcardStore
 
 
@@ -53,14 +55,31 @@ def test_review_is_append_only_and_retry_safe(tmp_path):
         back="Answer",
         expected_version=0,
     )
+    with pytest.raises(ValueError, match="positive integer"):
+        store.review(
+            operation_id="invalid-duration",
+            card_id="card-1",
+            reviewed_on="2030-01-01",
+            rating=2,
+            duration_ms=1.5,
+        )
     first = store.review(
-        operation_id="review-1", card_id="card-1", reviewed_on="2030-01-01", rating=2
+        operation_id="review-1",
+        card_id="card-1",
+        reviewed_on="2030-01-01",
+        rating=2,
+        duration_ms=1200,
     )
     replay = store.review(
-        operation_id="review-1", card_id="card-1", reviewed_on="2030-01-01", rating=2
+        operation_id="review-1",
+        card_id="card-1",
+        reviewed_on="2030-01-01",
+        rating=2,
+        duration_ms=1200,
     )
     assert first == replay
     assert first["due_on"] == "2030-01-02"
+    assert first["review_duration_ms"] == 1200
     count = store.conn.execute("SELECT COUNT(*) FROM review_events").fetchone()[0]
     assert count == 1
 
